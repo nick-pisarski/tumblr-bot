@@ -2,7 +2,10 @@
 import logging
 from pprint import pprint
 from datetime import timedelta
-from lib.bots import TumblrBot
+from lib.bots import TumblrBot, TumblrBotConfig
+
+BUCKET_NAME = 'tumblr-bot'
+KEY = 'config/tumblr_config.json'
 
 # Added so that that the logger works correctly
 root = logging.getLogger()
@@ -22,10 +25,18 @@ def func_handler(event, context):
     logger.info('Executing {0}'.format(context.function_name))
 
     try:
-        bot = TumblrBot('TBot1', 'config/tumblr_config.json')
+        config = TumblrBotConfig(bucket=BUCKET_NAME, key=KEY)
+        bot = TumblrBot('TBot1', config)
         bot.authenticate()
         bot.execute()
     except Exception as indent:
         logger.error("Error: {0}".format(indent))
 
     logger.info('Execution complete')
+
+
+# To run from the command line
+if __name__ == "__main__":
+    event = type('', (object,), {'type': "command line"})()
+    context = type('', (object,), {'function_name': "CLI"})()
+    func_handler(event, context)
