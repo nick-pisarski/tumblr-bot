@@ -2,6 +2,9 @@ import os
 import sys
 import json
 import logging
+import boto3
+import botocore
+
 from urllib.parse import parse_qsl
 from random import randrange
 from datetime import datetime
@@ -19,31 +22,67 @@ MAX_FOLLOW_LIMIT = 1000
 REBLOG_CHECK_LIMIT = 50
 
 
+class TumblrBotConfig:
+    def __init__(self, filepath=None, bucket=None, key=None):
+        self.filepath = filepath
+        self.use_file_path = self.filepath is not None
+        self.bucket = bucket
+        self.key = key
+        self.loaded = False
+        self.logger = logging.getLogger(
+            '{}({})'.format("tumbler_config", self.__class__.__name__))
+
+    def set_values(self, obj):
+        self.consumer_key = obj['consumer_key']
+        self.consumer_secret = obj['consumer_secret']
+        self.access_token = obj['access_token']
+        self.access_secret = obj['access_token_secret']
+
+    def load(self):
+        try:
+            if self.use_file_path:
+                self.logger.info('Filepath found, loading from file.')
+                with open(self.filepath, 'rb') as f:
+                    self.set_values(json.loads(f.read()))
+            else:
+                self.logger.info(
+                    'No filepath found, loading from s3 bucket: {}'.format(self.bucket))
+                s3 = boto3.resource('s3')
+                content_obj = s3.Object(self.bucket, self.key)
+                file_content = content_obj.get()['Body'].read().decode('utf-8')
+                self.set_values(json.loads(file_content))
+                self.loaded = True
+
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                print(e)
+                raise ("The object does not exist.")
+            else:
+                print(e)
+                raise
+
+        except Exception as e:
+            print(e)
+            raise Exception("Could not access Tumblr configuration file.")
+
+
 class TumblrBot(AbstractBotClass):
-    def __init__(self, name, config_filepath):
+    def __init__(self, name, config):
         super().__init__(name)
         self.has_access = True
         self.user = None
         self.reblogged_keys = []
 
-        # try to load the file path
-        try:
-            with open(config_filepath, 'rb') as f:
-                s = json.loads(f.read())
-                self.consumer_key = s['consumer_key']
-                self.consumer_secret = s['consumer_secret']
-                self.access_secret = s['access_token_secret']
-                self.access_token = s['access_token']
-        except:
-            # File not found load from S3 Bucket
-            # TODO load config from S3 Bucket
-            pass
-        finally:
-            raise Exception("Could not access Tumblr configuration file.")
+        if config is None:
+            raise Exception("Configuration not given")
+
+        self.config = config
+        self.config.load()
 
     def get_access(self):
         # WIP for some reason the token and secret that comes back are not authorized
-        consumer = oauth2.Consumer(self.consumer_key, self.consumer_secret)
+        consumer = oauth2.Consumer(
+            self.config.consumer_key, self.config.consumer_secret)
         oclient = oauth2.Client(consumer)
 
         resp, content = oclient.request(REQUEST_TOKEN_URL, "GET")
@@ -55,7 +94,7 @@ class TumblrBot(AbstractBotClass):
     def authenticate(self):
 
         self.client = pytumblr.TumblrRestClient(
-            self.consumer_key, self.consumer_secret, self.access_token, self.access_secret)
+            self.config.consumer_key, self.config.consumer_secret, self.config.access_token, self.config.access_secret)
 
         info = self.client.info()
         if info['user']:
@@ -89,13 +128,15 @@ class TumblrBot(AbstractBotClass):
     def reblog(self):
         blog_name = self.user['blogs'][0]['name']
         posts = self.get_dashboard()
+
         # only get posts that can reblogged
+        # TODO move move post selection to its own function and add in
+        # the ability to NOT select a post that has already been posted
         filtered_posts = [p for p in posts if(
             p['can_reblog'] and (p['blog_name'] != blog_name))]
 
         # grab a random post from the filtered posts to reblog
         # and keep trying until one is found that hasnt been blogged
-
         r_post = filtered_posts[randrange(0, len(filtered_posts))]
         while r_post['reblog_key'] in self.reblogged_keys:
             r_post = filtered_posts[randrange(0, len(filtered_posts))]
@@ -105,6 +146,8 @@ class TumblrBot(AbstractBotClass):
             self.client.reblog(
                 blogname=blog_name, id=r_post['id'], reblog_key=r_post['reblog_key'])
             self.client.like(id=r_post['id'], reblog_key=r_post['reblog_key'])
+
+            # add in check to make sure blog doesnt follow itself
             self.follow(r_post, r_post['blog_name'])
 
             # keep track of the last few calls
@@ -121,6 +164,7 @@ class TumblrBot(AbstractBotClass):
                 if source['name'] is not blog_name:
                     self.follow(source, source['name'])
 
+            # TODO revisit the information that gets logged on a sucess
             self.logger.info('Successfully reblogged {0}, {1}'.format(
                 r_post['reblog_key'], r_post['blog_name']))
 
