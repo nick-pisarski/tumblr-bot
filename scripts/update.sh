@@ -1,1 +1,1 @@
-zip -g function.zip function.py && aws lambda update-function-code --function-name TumblrBot --zip-file fileb://function.zip
+scripts/build.sh && aws lambda update-function-code --function-name TumblrBot --zip-file fileb://function.zip
