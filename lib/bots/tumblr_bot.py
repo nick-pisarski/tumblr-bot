@@ -6,6 +6,7 @@ from urllib.parse import parse_qsl
 from random import randrange
 from datetime import datetime
 from .bot_base import AbstractBotClass
+from .sayings import POST_SAYINGS
 
 import oauth2
 import pytumblr
@@ -90,7 +91,14 @@ class TumblrBot(AbstractBotClass):
         r_post = posts[randrange(0, len(posts))]
         while not self.is_valid_reblog_post(r_post):
             r_post = posts[randrange(0, len(posts))]
+
+        # Add a random saying each reblogged post
         return r_post
+
+    def generate_comment(self):
+        if randrange(0, 10) > 5:
+            return POST_SAYINGS[randrange(0, len(POST_SAYINGS))]
+        return None
 
     def reblog(self):
         posts = self.get_dashboard()
@@ -102,7 +110,11 @@ class TumblrBot(AbstractBotClass):
             rtitle = r_post["blog"]["title"]
             rurl = r_post["short_url"]
             # reblog, like and follow original poster
-            self.client.reblog(blogname=self.blog_name, id=rid, reblog_key=rkey)
+
+            comment = self.generate_comment()
+            self.client.reblog(
+                blogname=self.blog_name, id=rid, reblog_key=rkey, comment=comment
+            )
             self.client.like(id=rid, reblog_key=rkey)
             self.follow(r_post, r_post["blog"]["name"])
 
