@@ -14,12 +14,14 @@ from .bot_base import AbstractBotClass
 import oauth2
 import pytumblr
 
-REQUEST_TOKEN_URL = 'http://www.tumblr.com/oauth/request_token'
-AUTHORIZATION_URL = 'http://www.tumblr.com/oauth/authorize'
-ACCESS_TOKEN_URL = 'http://www.tumblr.com/oauth/access_token'
-REBLOGGED_KEYS_LENGTH = 100
+REQUEST_TOKEN_URL = "http://www.tumblr.com/oauth/request_token"
+AUTHORIZATION_URL = "http://www.tumblr.com/oauth/authorize"
+ACCESS_TOKEN_URL = "http://www.tumblr.com/oauth/access_token"
 MAX_FOLLOW_LIMIT = 1000
-REBLOG_CHECK_LIMIT = 50
+REBLOG_CHECK_LIMIT = 100
+
+logging.getLogger("boto3").setLevel(logging.CRITICAL)
+logging.getLogger("botocore").setLevel(logging.CRITICAL)
 
 
 class TumblrBotConfig:
@@ -30,31 +32,33 @@ class TumblrBotConfig:
         self.key = key
         self.loaded = False
         self.logger = logging.getLogger(
-            '{}({})'.format("tumbler_config", self.__class__.__name__))
+            "{}({})".format("tumbler_config", self.__class__.__name__)
+        )
 
     def set_values(self, obj):
-        self.consumer_key = obj['consumer_key']
-        self.consumer_secret = obj['consumer_secret']
-        self.access_token = obj['access_token']
-        self.access_secret = obj['access_token_secret']
+        self.consumer_key = obj["consumer_key"]
+        self.consumer_secret = obj["consumer_secret"]
+        self.access_token = obj["access_token"]
+        self.access_secret = obj["access_token_secret"]
 
     def load(self):
         try:
             if self.use_file_path:
-                self.logger.info('Filepath found, loading from file.')
-                with open(self.filepath, 'rb') as f:
+                self.logger.info("Filepath found, loading from file.")
+                with open(self.filepath, "rb") as f:
                     self.set_values(json.loads(f.read()))
             else:
                 self.logger.info(
-                    'No filepath found, loading from s3 bucket: {}'.format(self.bucket))
-                s3 = boto3.resource('s3')
+                    "No filepath found, loading from s3 bucket: {}".format(self.bucket)
+                )
+                s3 = boto3.resource("s3")
                 content_obj = s3.Object(self.bucket, self.key)
-                file_content = content_obj.get()['Body'].read().decode('utf-8')
+                file_content = content_obj.get()["Body"].read().decode("utf-8")
                 self.set_values(json.loads(file_content))
                 self.loaded = True
 
         except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == "404":
+            if e.response["Error"]["Code"] == "404":
                 print(e)
                 raise ("The object does not exist.")
             else:
@@ -71,7 +75,8 @@ class TumblrBot(AbstractBotClass):
         super().__init__(name)
         self.has_access = True
         self.user = None
-        self.reblogged_keys = []
+        self.blog_name = None
+        self.past_posts = None
 
         if config is None:
             raise Exception("Configuration not given")
@@ -79,36 +84,31 @@ class TumblrBot(AbstractBotClass):
         self.config = config
         self.config.load()
 
-    def get_access(self):
-        # WIP for some reason the token and secret that comes back are not authorized
-        consumer = oauth2.Consumer(
-            self.config.consumer_key, self.config.consumer_secret)
-        oclient = oauth2.Client(consumer)
-
-        resp, content = oclient.request(REQUEST_TOKEN_URL, "GET")
-        request_token = dict(parse_qsl(content.decode("utf-8")))
-        self.access_token = request_token['oauth_token']
-        self.access_secret = request_token['oauth_token_secret']
-        self.has_access = True
-
     def authenticate(self):
-
         self.client = pytumblr.TumblrRestClient(
-            self.config.consumer_key, self.config.consumer_secret, self.config.access_token, self.config.access_secret)
+            self.config.consumer_key,
+            self.config.consumer_secret,
+            self.config.access_token,
+            self.config.access_secret,
+        )
 
         info = self.client.info()
-        if info['user']:
-            self.user = info['user']
+        if info["user"]:
+            self.user = info["user"]
+            self.blog_name = self.user["blogs"][0]["name"]
 
         try:
-            if 'meta' in info:
-                if info['meta']['status'] == 401:
+            if "meta" in info:
+                if info["meta"]["status"] == 401:
                     self.authenticated = False
-                    self.logger.error('Authenication failed: {0}, {1}'.format(info['meta']['status'],
-                                                                              info['meta']['msg']))
+                    self.logger.error(
+                        "Authenication failed: {0}, {1}".format(
+                            info["meta"]["status"], info["meta"]["msg"]
+                        )
+                    )
             else:
                 self.authenticated = True
-                self.logger.info('Successfully authenticated.')
+                self.logger.info("Successfully authenticated.")
 
         except Exception as ex:
             self.authenticated = False
@@ -116,57 +116,57 @@ class TumblrBot(AbstractBotClass):
             raise
 
     def get_dashboard(self, limit=REBLOG_CHECK_LIMIT):
-        return self.client.dashboard(limit=limit)['posts']
+        return self.client.dashboard(limit=limit)["posts"]
 
     def follow(self, post, name):
-        # check if client account is following the blogger and follow if the number be followed
-        # less than the limit defined
-        if not post['followed'] and self.user['following'] < MAX_FOLLOW_LIMIT:
-            self.client.follow('{}.tumblr.com'.format(name))
-            self.logger.info('Followed {0}'.format(name))
+        if not post["followed"] and self.user["following"] < MAX_FOLLOW_LIMIT:
+            self.client.follow("{}.tumblr.com".format(name))
+            self.logger.info("Followed {0}".format(name))
+
+    def get_past_posts(self, count=REBLOG_CHECK_LIMIT):
+        if self.past_posts is None:
+            my_posts = self.client.posts(self.blog_name, limit=count, offset=24)
+            self.get_past_posts = [p["reblog_key"] for p in my_posts["posts"]]
+        return self.get_past_posts
+
+    def is_valid_reblog_post(self, post):
+        # can be reblogged, not our post and is not in the last 50 posts
+        posts = self.get_past_posts()
+        been_posted = post["reblog_key"] in posts
+        return (
+            post["can_reblog"]
+            and (post["blog_name"] != self.blog_name)
+            and not been_posted
+        )
+
+    def get_reblog_post(self, posts):
+        r_post = posts[randrange(0, len(posts))]
+        while not self.is_valid_reblog_post(r_post):
+            r_post = posts[randrange(0, len(posts))]
+        return r_post
 
     def reblog(self):
-        blog_name = self.user['blogs'][0]['name']
         posts = self.get_dashboard()
-
-        # only get posts that can reblogged
-        # TODO move move post selection to its own function and add in
-        # the ability to NOT select a post that has already been posted
-        filtered_posts = [p for p in posts if(
-            p['can_reblog'] and (p['blog_name'] != blog_name))]
-
-        # grab a random post from the filtered posts to reblog
-        # and keep trying until one is found that hasnt been blogged
-        r_post = filtered_posts[randrange(0, len(filtered_posts))]
-        while r_post['reblog_key'] in self.reblogged_keys:
-            r_post = filtered_posts[randrange(0, len(filtered_posts))]
+        r_post = self.get_reblog_post(posts)
 
         try:
+            rid = r_post["id"]
+            rkey = r_post["reblog_key"]
+            rtitle = r_post["blog"]["title"]
+            rurl = r_post["short_url"]
             # reblog, like and follow original poster
-            self.client.reblog(
-                blogname=blog_name, id=r_post['id'], reblog_key=r_post['reblog_key'])
-            self.client.like(id=r_post['id'], reblog_key=r_post['reblog_key'])
-
-            # add in check to make sure blog doesnt follow itself
-            self.follow(r_post, r_post['blog_name'])
-
-            # keep track of the last few calls
-            # NOTE: since this only gets runned once a running list of reblogged keys cannot
-            # be kept in memory, should update this to compare to the last 50 post from this
-            # account
-            self.reblogged_keys.append(r_post['reblog_key'])
-            if(len(self.reblogged_keys) > REBLOGGED_KEYS_LENGTH):
-                self.reblogged_keys.pop(0)
+            self.client.reblog(blogname=self.blog_name, id=rid, reblog_key=rkey)
+            self.client.like(id=rid, reblog_key=rkey)
+            self.follow(r_post, r_post["blog"]["name"])
 
             # add in a check to see if following the source
-            if 'source_title' in r_post:
-                source = self.client.blog_info(r_post['source_title'])['blog']
-                if source['name'] is not blog_name:
-                    self.follow(source, source['name'])
+            if "source_title" in r_post:
+                source = self.client.blog_info(r_post["source_title"])["blog"]
+                self.follow(source, source["name"])
 
             # TODO revisit the information that gets logged on a sucess
-            self.logger.info('Successfully reblogged {0}, {1}'.format(
-                r_post['reblog_key'], r_post['blog_name']))
+            log_message = "Successfully reblogged {0}'s post, {1}".format(rtitle, rurl)
+            self.logger.info(log_message)
 
         except Exception as ex:
             self.logger.error(sys.exc_info()[0])
