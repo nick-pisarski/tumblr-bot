@@ -19,6 +19,9 @@ logging.basicConfig(
     datefmt="%m-%d-%Y %H:%M:%S",
 )
 
+logging.getLogger("boto3").setLevel(logging.CRITICAL)
+logging.getLogger("botocore").setLevel(logging.CRITICAL)
+
 
 def func_handler(event, context):
     logger = logging.getLogger("MAIN")
