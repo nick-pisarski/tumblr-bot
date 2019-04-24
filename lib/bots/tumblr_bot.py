@@ -112,6 +112,8 @@ class TumblrBot(AbstractBotClass):
             # reblog, like and follow original poster
 
             comment = self.generate_comment()
+            if comment is None:
+                self.client.reblog(blogname=self.blog_name, id=rid, reblog_key=rkey)
             self.client.reblog(
                 blogname=self.blog_name, id=rid, reblog_key=rkey, comment=comment
             )
