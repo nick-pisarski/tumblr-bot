@@ -2,5 +2,6 @@ config
 v-env
 function.zip
 function
+testing_bot.py
 .DS_STORE
 .vscode

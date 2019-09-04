@@ -6,4 +6,6 @@ POST_SAYINGS = [
     "I cannot believe I am looking at this...",
     "Is this even real?",
     "I bet you'll like this",
+    "My ohh my...",
+    "uhh ... can't find my words",
 ]

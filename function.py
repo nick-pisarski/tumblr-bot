@@ -39,6 +39,23 @@ def func_handler(event, context):
     logger.info("Execution complete")
 
 
+def test_handler(event, context):
+    logger = logging.getLogger("MAIN")
+    logger.info("Executing {0} test_handler".format(context.function_name))
+
+    try:
+        config = TumblrBotConfig(bucket=BUCKET_NAME, key=KEY)
+        bot = TumblrBot("TBot1", config)
+        bot.authenticate()
+
+        print("Total Following: {0}".format(bot.user["following"]))
+
+    except Exception as indent:
+        logger.error("Error: {0}".format(indent))
+
+    logger.info("Execution complete")
+
+
 # To run from the command line
 if __name__ == "__main__":
     event = type("", (object,), {"type": "command line"})()

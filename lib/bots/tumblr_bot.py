@@ -133,6 +133,35 @@ class TumblrBot(AbstractBotClass):
             self.logger.error(sys.exc_info()[0])
             raise
 
+    def get_followers(self):
+        return self.client.followers(self.blog_name)["users"]
+
+    def get_num_followers(self):
+        return self.client.followers(self.blog_name)["total_users"]
+
+    def follow_followers(self):
+        users = [f for f in self.get_followers() if not f["following"]]
+        if len(users) > 0:
+            log_message = "Uhh ohh currently not following {0} followers.".format(
+                len(users)
+            )
+            self.logger.info(log_message)
+
+            for user in users:
+                if not user["following"]:
+                    self.client.follow(user["url"])
+                    log_message = "Now following {0}".format(user["name"])
+                    self.logger.info(log_message)
+
+        else:
+            self.logger.info("Following all followers.")
+
     def execute(self):
         self.reblog()
+
+        self.follow_followers()
+
+        log_message = "Total Followers: {0}".format(self.get_num_followers())
+        self.logger.info(log_message)
+
         self.last_executed = datetime.now()
