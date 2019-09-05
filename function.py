@@ -3,6 +3,7 @@ import logging
 from pprint import pprint
 from datetime import timedelta
 from lib.bots import TumblrBot, TumblrBotConfig
+from lib.utilities import handle_error
 
 BUCKET_NAME = "tumblr-bot"
 KEY = "config/tumblr_config.json"
@@ -34,24 +35,7 @@ def func_handler(event, context):
         bot.execute()
 
     except Exception as indent:
-        logger.error("Error: {0}".format(indent))
-
-    logger.info("Execution complete")
-
-
-def test_handler(event, context):
-    logger = logging.getLogger("MAIN")
-    logger.info("Executing {0} test_handler".format(context.function_name))
-
-    try:
-        config = TumblrBotConfig(bucket=BUCKET_NAME, key=KEY)
-        bot = TumblrBot("TBot1", config)
-        bot.authenticate()
-
-        print("Total Following: {0}".format(bot.user["following"]))
-
-    except Exception as indent:
-        logger.error("Error: {0}".format(indent))
+        handle_error(indent, logger)
 
     logger.info("Execution complete")
 
