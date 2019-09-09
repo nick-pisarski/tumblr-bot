@@ -98,7 +98,7 @@ class TumblrBot(AbstractBotClass):
 
     def generate_comment(self):
         if randrange(0, 10) > 5:
-            return POST_SAYINGS[randrange(0, len(POST_SAYINGS))]
+            return self.config.comments[randrange(0, len(self.config.comments))]
         return None
 
     def reblog(self):
