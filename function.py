@@ -3,7 +3,7 @@ import logging
 from pprint import pprint
 from datetime import timedelta
 from lib.bots import TumblrBot, TumblrBotConfig
-from lib.utilities import handle_error
+from lib.utilities import handle_error_with_trace
 
 BUCKET_NAME = "tumblr-bot"
 KEY = "config/tumblr_config.json"
@@ -35,7 +35,7 @@ def func_handler(event, context):
         bot.execute()
 
     except Exception as indent:
-        handle_error(indent, logger)
+        handle_error_with_trace(indent, logger)
 
     logger.info("Execution complete")
 

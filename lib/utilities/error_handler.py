@@ -2,8 +2,13 @@ import sys
 import traceback
 import logging
 
-
 def handle_error(exception, logger=logging):
+    ex_type, ex_value, ex_traceback = sys.exc_info()
+
+    logger.error("Exception type : %s " % ex_type.__name__)
+    logger.error("Exception message : %s" % ex_value)
+
+def handle_error_with_trace(exception, logger=logging):
     ex_type, ex_value, ex_traceback = sys.exc_info()
 
     # Extract unformatter stack traces as tuples
@@ -20,4 +25,7 @@ def handle_error(exception, logger=logging):
 
     logger.error("Exception type : %s " % ex_type.__name__)
     logger.error("Exception message : %s" % ex_value)
-    logger.error("Stack trace : %s" % stack_trace)
+    logger.error("Stack trace ")
+
+    for trace in stack_trace:
+        logger.error("%s" % trace)

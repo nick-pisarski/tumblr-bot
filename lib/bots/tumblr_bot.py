@@ -7,7 +7,7 @@ from random import randrange
 from datetime import datetime
 from .bot_base import AbstractBotClass
 from .sayings import POST_SAYINGS
-from ..utilities import handle_error
+from ..utilities import handle_error_with_trace
 
 import oauth2
 import pytumblr
@@ -61,7 +61,7 @@ class TumblrBot(AbstractBotClass):
 
         except Exception as ex:
             self.authenticated = False
-            handle_error(ex, self.logger)
+            handle_error_with_trace(ex, self.logger)
             raise
 
     def get_dashboard(self, limit=REBLOG_CHECK_LIMIT):
@@ -131,7 +131,7 @@ class TumblrBot(AbstractBotClass):
             self.logger.info(log_message)
 
         except Exception as ex:
-            handle_error(ex, self.logger)
+            handle_error_with_trace(ex, self.logger)
             raise
 
     def get_followers(self):
